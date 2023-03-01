@@ -1,7 +1,15 @@
+mod context;
+// mod resource;
+// mod system;
+
 pub use core::future::Future;
 use core::ops::DerefMut;
 use core::pin::Pin;
 use core::task::{Context, Poll};
+
+use context::AppContext;
+
+pub use context::*;
 
 pub type Error = Box<dyn std::error::Error>;
 
@@ -16,59 +24,41 @@ pub enum Phase {
 }
 
 pub struct App {
-    analyzers: Vec<Box<System>>,
-    executors: Vec<Box<System>>,
-    finalizers: Vec<Box<System>>,
-    initializers: Vec<Box<System>>,
+    analyzers: Vec<SystemCaller>,
+    context: AppContext,
+    executors: Vec<SystemCaller>,
+    finalizers: Vec<SystemCaller>,
+    initializers: Vec<SystemCaller>,
 }
 
 impl App {
     pub fn new() -> Self {
         App {
             analyzers: vec![],
+            context: AppContext::default(),
             executors: vec![],
             finalizers: vec![],
             initializers: vec![],
         }
     }
 
-    pub fn add_analyzer<S>(mut self, system: S) -> Self
-    where
-        S: FnOnce() -> Result<(), Error> + 'static,
-        // S: FnOnce() -> F,
-        // F: Future<Output = ()>,
-    {
-        self.analyzers.push(Box::new(system));
+    pub fn add_analyzer(mut self, system: impl IntoSystemCaller) -> Self {
+        self.analyzers.push(system.into_system_caller());
         self
     }
 
-    pub fn add_executor<S>(mut self, system: S) -> Self
-    where
-        S: FnOnce() -> Result<(), Error> + 'static,
-        // S: FnOnce() -> F,
-        // F: Future<Output = ()>,
-    {
-        self.executors.push(Box::new(system));
+    pub fn add_executor(mut self, system: impl IntoSystemCaller) -> Self {
+        self.executors.push(system.into_system_caller());
         self
     }
 
-    pub fn add_finalizer<S>(mut self, system: S) -> Self
-    where
-        S: FnOnce() -> Result<(), Error> + 'static,
-        // S: FnOnce() -> F,
-        // F: Future<Output = ()>,
-    {
-        self.finalizers.push(Box::new(system));
+    pub fn add_finalizer(mut self, system: impl IntoSystemCaller) -> Self {
+        self.finalizers.push(system.into_system_caller());
         self
     }
 
-    pub fn add_initializer<S>(mut self, system: S) -> Self
-    where
-        S: FnOnce() -> Result<(), Error> + 'static,
-        // S: FnOnce() -> F,
-        // F: Future<Output = ()>,
-    {
-        self.initializers.push(Box::new(system));
+    pub fn add_initializer(mut self, system: impl IntoSystemCaller) -> Self {
+        self.initializers.push(system.into_system_caller());
         self
     }
 
@@ -89,7 +79,7 @@ impl App {
 
     async fn run_analyzers(&mut self) -> Result<(), Error> {
         for analyzer in self.analyzers.drain(0..) {
-            analyzer()?;
+            analyzer.call(&self.context);
         }
 
         Ok(())
@@ -98,7 +88,7 @@ impl App {
     async fn run_executors(&mut self) -> Result<(), Error> {
         // TODO parallel
         for analyzer in self.executors.drain(0..) {
-            analyzer()?;
+            analyzer.call(&self.context);
         }
 
         Ok(())
@@ -107,7 +97,7 @@ impl App {
     async fn run_finalizers(&mut self) -> Result<(), Error> {
         // TODO parallel
         for analyzer in self.finalizers.drain(0..) {
-            analyzer()?;
+            analyzer.call(&self.context);
         }
 
         Ok(())
@@ -115,7 +105,7 @@ impl App {
 
     async fn run_initializers(&mut self) -> Result<(), Error> {
         for initializer in self.initializers.drain(0..) {
-            initializer()?;
+            initializer.call(&self.context);
         }
 
         Ok(())

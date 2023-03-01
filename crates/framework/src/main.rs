@@ -1,6 +1,10 @@
-use framework::{App, Error};
+// mod system;
 
-fn setup_test() -> Result<(), Error> {
+use framework::{App, Error, Res};
+
+fn setup_test(test: Res) -> Result<(), Error> {
+    dbg!(test);
+
     println!("setup_test");
 
     Ok(())
