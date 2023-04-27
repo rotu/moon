@@ -11,7 +11,7 @@ use moon_dep_graph::DepGraph;
 use moon_emitter::{Emitter, Event};
 use moon_error::MoonError;
 use moon_logger::{debug, error, trace};
-use moon_notifier::WebhooksSubscriber;
+use moon_notifier::{send_notification, WebhooksSubscriber};
 use moon_project_graph::ProjectGraph;
 use moon_terminal::{label_to_the_moon, ExtendedTerm};
 use moon_utils::{is_ci, is_test_env, time};
@@ -174,6 +174,13 @@ impl Pipeline {
                                 passed_count += 1;
                             }
 
+                            if result.should_abort() {
+                                error!(
+                                    target: &batch_target_name,
+                                    "Encountered a critical error, aborting the action pipeline"
+                                );
+                            }
+
                             if self.bail && result.has_failed() || result.should_abort() {
                                 abort_error =
                                     Some(result.error.unwrap_or_else(|| "Unknown error!".into()));
@@ -192,10 +199,7 @@ impl Pipeline {
             }
 
             if let Some(abort_error) = abort_error {
-                error!(
-                    target: &batch_target_name,
-                    "Encountered a critical error, aborting the action pipeline"
-                );
+                send_notification("Failed to run task");
 
                 local_emitter
                     .emit(Event::PipelineAborted {
@@ -215,6 +219,8 @@ impl Pipeline {
             target: LOG_TARGET,
             "Finished running {} actions in {:?}", total_actions_count, &duration
         );
+
+        send_notification("Ran task");
 
         local_emitter
             .emit(Event::PipelineFinished {
